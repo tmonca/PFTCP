@@ -5,6 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <netinet/in.h>
+#include <math.h>
 #define MAXPENDING 5    /* Max connection requests */
 #define BUFFSIZE 32
 
@@ -12,15 +13,29 @@ void Die(char *mess) { perror(mess); exit(1); }
 
 void HandleClient(int sock) {
   char buffer[BUFFSIZE];
+  char reply[BUFFSIZE];
+  char sum, tmp, tmp2;
+int i;
   int received = -1;
   /* Receive message */
   if ((received = recv(sock, buffer, BUFFSIZE, 0)) < 0) {
     Die("Failed to receive initial bytes from client");
   }
+/* Calculate a "checksum" and send that back instead 
+
+Start with something simple 
+*/
+  reply[received] = buffer[received];
+  for (i = 0; i < received; i++) {
+    tmp = buffer[i];
+    fprintf(stderr, "char is %c\n", tmp);
+    reply[received -1 - i] = tmp+2;
+   }
+
   /* Send bytes and check for more incoming data in loop */
   while (received > 0) {
     /* Send back received data */
-    if (send(sock, buffer, received, 0) != received) {
+    if (send(sock, reply, received, 0) != received) {
       Die("Failed to send bytes to client");
     }
     /* Check for more data */

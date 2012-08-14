@@ -1,3 +1,30 @@
+
+/*******************************************
+*
+* receives data via TCP, sends UDP reply
+
+Modify to use TCP as control channel
+Send data chunk. ACK with count and cksum
+
+If ACK is wrong we re-send the chunk
+
+This prog needs to
+passive open TCP session on port xyz
+then open UDP socket
+send details of UDP socket to client via TCP
+Listen for connection on UDP
+NB later on we can add security here like MPTCP
+
+Once data flows on UDP it sends back ACKs
+question: coping with re-ordering?
+
+Other possibility would be to use FEC, etc
+Once all chunks sent sender sends as much 
+correction data as reported loss...
+
+*
+********************************************/
+
 #include <stdio.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>

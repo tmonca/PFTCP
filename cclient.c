@@ -1,3 +1,31 @@
+/*******************************************
+*
+* receives data via TCP, sends UDP reply
+
+
+Modify to use TCP as control channel
+Send data chunk. ACK with count and cksum
+
+If ACK is wrong we re-send the chunk
+
+This prog needs to
+open TCP session on port xyz
+Then listen for reply with details of UDP
+then open UDP socket
+NB later on we can add security here like MPTCP
+
+Start sending data, listen for ACKs on TCP
+question: coping with re-ordering?
+
+Other possibility would be to use FEC, etc
+Once all chunks sent sender sends as much 
+correction data as reported loss...
+
+
+
+*
+********************************************/
+
 #include <stdio.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -5,7 +33,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <netinet/in.h>
-#define BUFFSIZE 64  /*A compromise length*/
+#define TCPBUFFSIZE 64  /*A compromise length*/
+#define UDPBUFFSIZE 1400 /*fixed for now*/
 
 void Die(char *mess) { perror(mess); exit(1); }
 
@@ -17,13 +46,21 @@ int main(int argc, char *argv[]) {
 	unsigned int tcp_echolen;
 
 	
-	/*variables for the UDP listener*/
+	/*variables for the UDP sender*/
   int sock_udp;
   struct sockaddr_in udp_echoserver;
   struct sockaddr_in udp_echoclient;
   char reply_buffer[BUFFSIZE];
   unsigned int udp_echolen, clientlen, serverlen;
   int received = 0;
+  
+/*I need a sliding buffer to send the data out
+
+Needs to be addressable by ACK number for 
+retransmission. Or am I going to just send
+FEC data instead? */
+
+
   int j;
   
 	/*Check for correct usage*/

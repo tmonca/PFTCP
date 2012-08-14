@@ -36,13 +36,20 @@ correction data as reported loss...
 #define TCPBUFFSIZE 64  /*A compromise length*/
 #define UDPBUFFSIZE 1400 /*fixed for now*/
 
+#define OPEN "open"
+#define CLOSE "close"
+#define RESEND "resend"
+#define CONNECT "connect"
+
 void Die(char *mess) { perror(mess); exit(1); }
 
 int main(int argc, char *argv[]) {
 	/*variables for TCP*/
 	int sock_tcp;
 	struct sockaddr_in tcp_echoserver;
-	char out_buffer[BUFFSIZE];
+	char out_buffer[TCPBUFFSIZE];
+	char command[TCPBUFFSIZE];
+	char UPort[5];
 	unsigned int tcp_echolen;
 
 	
@@ -50,16 +57,17 @@ int main(int argc, char *argv[]) {
   int sock_udp;
   struct sockaddr_in udp_echoserver;
   struct sockaddr_in udp_echoclient;
-  char reply_buffer[BUFFSIZE];
+  char reply_buffer[TCPBUFFSIZE];
+  char buffer[TCPBUFFSIZE];
   unsigned int udp_echolen, clientlen, serverlen;
   int received = 0;
+  int UDPport = 0;
   
 /*I need a sliding buffer to send the data out
 
 Needs to be addressable by ACK number for 
 retransmission. Or am I going to just send
 FEC data instead? */
-
 
   int j;
   
@@ -104,26 +112,52 @@ FEC data instead? */
   		Die("Failed to connect with TCP server");
 	}
 /* Send the word to the server */
-	tcp_echolen = strlen(argv[2]);
-	if (send(sock_tcp, argv[2], tcp_echolen, 0) != tcp_echolen) {
+	memset(&buffer, 0, TCPBUFFSIZE);
+	strcpy(buffer, OPEN);
+
+	if (send(sock_tcp, buffer, sizeof(buffer), 0) < 1) {
   		Die("Mismatch in number of sent bytes");
 	}
 	
 /* Receive the word back from the server */
 	fprintf(stdout, "Received: ");
-	
-	while (received < tcp_echolen) {
-
-  	/*The following lines listen on the UDP socket for the reply*/
-  	clientlen = sizeof(udp_echoclient);
-    if ((received = recvfrom(sock_udp, reply_buffer, BUFFSIZE, 0, (struct sockaddr *) &udp_echoclient, &clientlen)) < 0) {
-      Die("Failed to receive message");
-    }
-    fprintf(stderr, "Client connected: %s\n", inet_ntoa(udp_echoclient.sin_addr));
+	  int bytes = 1;
+	while (UDPport == 0) {
+      
+ /*
+ 		Use TCP as control. Once UDP details passed start sending data.
+ 		Send the data in blocks of 10 datagrams.
+ 		After 10th wait for ACK, then clear, send next 10.
+ 		When \EOF send CLOSE
+ */
+  
+    bytes = recv(sock_tcp, command, TCPBUFFSIZE-1, 0);
+    
+  	command[bytes] = '\0';        /* Assure null terminated string */
+  	fprintf(stdout,"We saw % d bytes saying %s \n",bytes,  command);
+  	
+  	if(strncmp(UPort, "U", 1)) {
+  		long tmp;
+  		char * pEnd;
+  		tmp = strtol(command+1, &pEnd, 10 );
+  		UDPport = (int) tmp;
+  		fprintf(stdout, "We see port %d", UDPport);
+  	}
+  	else{
+  		/*So this was a message with UDP details. We need to parse the next bytes which
+  		tell us which port is open*/
   		
-  	reply_buffer[received] = '\0';        /* Assure null terminated string */
-  	fprintf(stdout, reply_buffer);
+  		fprintf(stdout, "not a U\n");
+  	}
+  	bytes = 0;
 	}
+	
+	/*So now we know that UDPport is the port tha the other end is listening on
+	What is the best approach to sending the actual data? Probably need to 
+	divide it into functions. Start by just sending a big blob of data and getting
+	an ACK back...
+	*/
+	
   	fprintf(stdout, "\n");
   	close(sock_udp);
   	close(sock_tcp);

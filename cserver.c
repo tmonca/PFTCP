@@ -32,7 +32,7 @@ correction data as reported loss...
 #include <string.h>
 #include <unistd.h>
 #include <netinet/in.h>
-#include <math.h>
+
 #define MAXPENDING 5    /* Max connection requests */
 #define BUFFSIZE 64
 
@@ -40,6 +40,7 @@ void Die(char *mess) { perror(mess); exit(1); }
 
 void HandleClient(int rcvsock) {
   char buffer[BUFFSIZE];
+  char command[7];
   char sum, tmp, tmp2;
 	int udp_clientsock;
 	struct sockaddr_in udp_echoserver;
@@ -50,28 +51,28 @@ void HandleClient(int rcvsock) {
   }
   fprintf(stderr, "Received %s \n", buffer);
   
-  /* Create the UDP socket */
+  /* Create the UDP socket 
 	if ((udp_clientsock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
-  	Die("Failed to create socket");
-	}
+  	Die("Failed to create socket");*/
+/*	}
 /* Construct the UDP server sockaddr_in structure */
-	memset(&udp_echoserver, 0, sizeof(udp_echoserver));       /* Clear struct */
-	udp_echoserver.sin_family = AF_INET;                  /* Internet/IP */
-	udp_echoserver.sin_addr.s_addr = inet_addr("127.0.0.1");   /* Any IP address */
-	udp_echoserver.sin_port = htons(13);  								/*hard wire the UDP to port 13*/
+/*	memset(&udp_echoserver, 0, sizeof(udp_echoserver));        Clear struct */
+/*	udp_echoserver.sin_family = AF_INET;                  /* Internet/IP */
+/*	udp_echoserver.sin_addr.s_addr = inet_addr("127.0.0.1");   /* Any IP address */
+/*	udp_echoserver.sin_port = htons(1313);  								/*hard wire the UDP to port 1313*/
   
   while (received > 0) {
     /* Send back received data */
-    if (sendto(udp_clientsock, buffer, received, 0, (struct sockaddr *) &udp_echoserver, sizeof(udp_echoserver)) != received) {
-  	Die("Failed to send UDP reply");
-	}
-    /* Check for more data */
-    if ((received = recv(rcvsock, buffer, BUFFSIZE, 0)) < 0) {
-      Die("Failed to receive additional bytes from client");
-    }
+    strcpy(command, "U 1313");
+    command[6]  = '\0';
+    if (received = send(rcvsock, command, 7, 0) != 7) {
+  		Die("Failed to send TCP command in reply");
+		}
+		fprintf(stderr, "sent back %s \n", command);
+    received = 0;
   }
   close(rcvsock);
-  close(udp_clientsock);
+  //close(udp_clientsock);
 }
 
 int main(int argc, char *argv[]) {
@@ -96,16 +97,10 @@ int main(int argc, char *argv[]) {
  		Die("Failed to bind the TCP server socket");
 	}
 
-/* Bind the socket 
-	if (bind(udp_serversock, (struct sockaddr *) &udp_echoserver, sizeof(udp_echoserver)) < 0) {
-  	Die("Failed to bind UDP server socket");
-	}*/
-	
 /* Listen on the server socket */
 	if (listen(tcp_serversock, MAXPENDING) < 0) {
   	Die("Failed to listen on server socket");
 	}
-
   /* Run until cancelled */
   while (1) {
     unsigned int clientlen = sizeof(tcp_echoclient);

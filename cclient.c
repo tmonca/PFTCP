@@ -21,8 +21,6 @@ Other possibility would be to use FEC, etc
 Once all chunks sent sender sends as much 
 correction data as reported loss...
 
-
-
 *
 ********************************************/
 
@@ -30,11 +28,15 @@ correction data as reported loss...
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <stdlib.h>
+
+#include <fcntl.h>
+
+
 #include <string.h>
 #include <unistd.h>
 #include <netinet/in.h>
 #define TCPBUFFSIZE 64  /*A compromise length*/
-#define UDPBUFFSIZE 1400 /*fixed for now*/
+#define UDPBUFFSIZE 20000 /*fixed for now*/
 
 #define OPEN "open"
 #define CLOSE "close"
@@ -49,6 +51,7 @@ int main(int argc, char *argv[]) {
 	struct sockaddr_in tcp_echoserver;
 	char out_buffer[TCPBUFFSIZE];
 	char command[TCPBUFFSIZE];
+	char data[UDPBUFFSIZE];
 	char UPort[5];
 	unsigned int tcp_echolen;
 
@@ -70,12 +73,17 @@ retransmission. Or am I going to just send
 FEC data instead? */
 
   int j;
-  
+  int32_t fh = 0;
+  const char* filename = "input.txt";
+  if((fh = open(filename, O_RDONLY)) == -1){
+    Die("Couldn't open the file");
+  }
+  long fpoint = 0;
 	/*Check for correct usage*/
-	if (argc != 4) {
-  		fprintf(stderr, "USAGE: TCPecho <server_ip> <word> <port>\n");
-  		exit(1);
-	}
+    if (argc != 4) {
+  	fprintf(stderr, "USAGE: TCPecho <server_ip> <word> <port>\n");
+  	exit(1);
+    }
 
 /* Create the TCP socket */
 	if ((sock_tcp = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
@@ -141,7 +149,7 @@ FEC data instead? */
   		char * pEnd;
   		tmp = strtol(command+1, &pEnd, 10 );
   		UDPport = (int) tmp;
-  		fprintf(stdout, "We see port %d", UDPport);
+  		fprintf(stdout, "We see port %d\n", UDPport);
   	}
   	else{
   		/*So this was a message with UDP details. We need to parse the next bytes which
@@ -157,8 +165,26 @@ FEC data instead? */
 	divide it into functions. Start by just sending a big blob of data and getting
 	an ACK back...
 	*/
-	
-  	fprintf(stdout, "\n");
+    while (bytes < 20000){
+       bytes = read(fh, data, UDPBUFFSIZE);
+     
+     if ((sock_udp = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
+  	Die("Failed to create socket");
+      }
+
+/* Construct the server sockaddr_in structure */
+	memset(&udp_echoserver, 0, sizeof(udp_echoserver));       /* Clear struct */
+	udp_echoserver.sin_family = AF_INET;                  /* Internet/IP */
+	udp_echoserver.sin_addr.s_addr = inet_addr(argv[1]); /* IP address */
+	udp_echoserver.sin_port = htons(UDPport);       /* server port */
+
+/* Send the word to the server */
+	if (sendto(sock_udp, argv[2], UDPBUFFSIZE, 0, (struct sockaddr *) &udp_echoserver, sizeof(udp_echoserver)) != UDPBUFFSIZE) {
+	    Die("Mismatch in number of sent bytes");
+	}
+
+
+    }
   	close(sock_udp);
   	close(sock_tcp);
   	exit(0);

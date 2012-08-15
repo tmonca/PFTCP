@@ -34,50 +34,102 @@ correction data as reported loss...
 #include <netinet/in.h>
 
 #define MAXPENDING 5    /* Max connection requests */
-#define BUFFSIZE 64
+#define BUFFSIZE 10000
 
 void Die(char *mess) { perror(mess); exit(1); }
 
+unsigned short checksum(unsigned short * buffer, int bytes)
+{
+    unsigned long sum = 0;
+    unsigned short answer = 0;
+    int i = bytes;
+    while(i>0)
+    {
+            sum+=*buffer;
+            buffer+=1;
+            i-=2;
+    }
+    sum = (sum >> 16) + (sum & htonl(0x0000ffff));
+    sum += (sum >> 16);
+    return ~sum;
+}
+
 void HandleClient(int rcvsock) {
   char buffer[BUFFSIZE];
+  unsigned short data[BUFFSIZE];
+  unsigned short check;
   char command[7];
   char sum, tmp, tmp2;
-	int udp_clientsock;
-	struct sockaddr_in udp_echoserver;
+  int udp_clientsock, serverlen, bytes;
+  struct sockaddr_in udp_echoserver;
   int received = -1;
+
+  FILE * fh;
+  fh = fopen("output.txt", "a");
+
   /* Receive message */
   if ((received = recv(rcvsock, buffer, BUFFSIZE, 0)) < 0) {
     Die("Failed to receive initial bytes from client");
   }
   fprintf(stderr, "Received %s \n", buffer);
   
-  /* Create the UDP socket 
+  /* Create the UDP socket */ 
 	if ((udp_clientsock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
-  	Die("Failed to create socket");*/
-/*	}
+		Die("Failed to create socket");
+	}
 /* Construct the UDP server sockaddr_in structure */
-/*	memset(&udp_echoserver, 0, sizeof(udp_echoserver));        Clear struct */
-/*	udp_echoserver.sin_family = AF_INET;                  /* Internet/IP */
-/*	udp_echoserver.sin_addr.s_addr = inet_addr("127.0.0.1");   /* Any IP address */
-/*	udp_echoserver.sin_port = htons(1313);  								/*hard wire the UDP to port 1313*/
+	memset(&udp_echoserver, 0, sizeof(udp_echoserver));       /* Clear struct */
+	udp_echoserver.sin_family = AF_INET;                  /* Internet/IP */
+	udp_echoserver.sin_addr.s_addr = inet_addr("127.0.0.1");   /* Any IP address */
+	udp_echoserver.sin_port = htons(1313);  	/*hard wire the UDP to port 1313*/
   
   while (received > 0) {
-    /* Send back received data */
+    /* Send back command */
     strcpy(command, "U 1313");
     command[6]  = '\0';
     if (received = send(rcvsock, command, 7, 0) != 7) {
-  		Die("Failed to send TCP command in reply");
-		}
-		fprintf(stderr, "sent back %s \n", command);
+      	Die("Failed to send TCP command in reply");
+    }
+    
+/*
+
+We need to listen on the UDP socket. When we get date write it to some structure.
+After N bytes we send back some sort of checksum (IP cksum?)
+
+So... have a large buffer we fill. Once full cksum it, send back result by TCP.
+
+If we get OK back (TCP) send the buffer to a file, then send back ready to receive,
+
+repeat...
+
+*/
+    serverlen = sizeof(udp_echoserver);
+    if (bind(udp_clientsock, (struct sockaddr *) &udp_echoserver, serverlen) < 0) {
+  	Die("Failed to bind server socket");
+    } 
+
+    while (bytes < 20000) {
+    /* Receive a message from the client */
+
+       if ((bytes = recvfrom(udp_clientsock, data, BUFFSIZE, 0, (struct sockaddr *) &udp_echoserver, &serverlen)) < 0) {
+	 Die("Failed to receive message");
+       }
+      // fprintf(stderr, "Client connected: %s\n", inet_ntoa(udp_echoclient.sin_addr)); 
+    }
+//Now process the bytes
+    check = checksum(data, BUFFSIZE);
+	
+    fprintf(stderr, "checksum returns %u \n", check);
     received = 0;
   }
   close(rcvsock);
-  //close(udp_clientsock);
+  close(udp_clientsock);
 }
 
 int main(int argc, char *argv[]) {
   int tcp_serversock, tcp_clientsock;
   struct sockaddr_in tcp_echoserver, tcp_echoclient;
+
   if (argc != 2) {
     fprintf(stderr, "USAGE: echoserver <port>\n");
     exit(1);

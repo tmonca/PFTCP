@@ -36,7 +36,8 @@ correction data as reported loss...
 #include <unistd.h>
 #include <netinet/in.h>
 #define TCPBUFFSIZE 64  /*A compromise length*/
-#define UDPBUFFSIZE 20000 /*fixed for now*/
+#define UDPBUFFSIZE 14000 /*fixed for now*/
+#define UDPDGRAM 1400
 
 #define OPEN "open"
 #define CLOSE "close"
@@ -124,7 +125,7 @@ FEC data instead? */
 	strcpy(buffer, OPEN);
 
 	if (send(sock_tcp, buffer, sizeof(buffer), 0) < 1) {
-  		Die("Mismatch in number of sent bytes");
+  		Die("Mismatch in number of TCP sent bytes");
 	}
 	
 /* Receive the word back from the server */
@@ -165,9 +166,8 @@ FEC data instead? */
 	divide it into functions. Start by just sending a big blob of data and getting
 	an ACK back...
 	*/
-    while (bytes < 20000){
-       bytes = read(fh, data, UDPBUFFSIZE);
-     
+
+	
      if ((sock_udp = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
   	Die("Failed to create socket");
       }
@@ -178,12 +178,16 @@ FEC data instead? */
 	udp_echoserver.sin_addr.s_addr = inet_addr(argv[1]); /* IP address */
 	udp_echoserver.sin_port = htons(UDPport);       /* server port */
 
+    while (bytes < 14000){
+       bytes = read(fh, data, UDPBUFFSIZE);
+     
 /* Send the word to the server */
-	if (sendto(sock_udp, argv[2], UDPBUFFSIZE, 0, (struct sockaddr *) &udp_echoserver, sizeof(udp_echoserver)) != UDPBUFFSIZE) {
+      while(pointer < 14000){
+	if (sendto(sock_udp, data[pointer], UDPDGRAM, 0, (struct sockaddr *) &udp_echoserver, sizeof(udp_echoserver)) != UDPDGRAM) {
 	    Die("Mismatch in number of sent bytes");
 	}
-
-
+      pointer 
+    }
     }
   	close(sock_udp);
   	close(sock_tcp);

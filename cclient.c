@@ -31,6 +31,7 @@ correction data as reported loss...
 
 #include <fcntl.h>
 
+#include <openssl/sha.h>
 
 #include <string.h>
 #include <unistd.h>
@@ -52,10 +53,11 @@ int main(int argc, char *argv[]) {
 	struct sockaddr_in tcp_echoserver;
 	char out_buffer[TCPBUFFSIZE];
 	char command[TCPBUFFSIZE];
-	char data[UDPBUFFSIZE];
+
 	char UPort[5];
 	unsigned int tcp_echolen;
-
+	
+	int pointer;
 	
 	/*variables for the UDP sender*/
   int sock_udp;
@@ -63,6 +65,10 @@ int main(int argc, char *argv[]) {
   struct sockaddr_in udp_echoclient;
   char reply_buffer[TCPBUFFSIZE];
   char buffer[TCPBUFFSIZE];
+  unsigned char data[UDPBUFFSIZE];
+  
+  unsigned char check[20];
+  
   unsigned int udp_echolen, clientlen, serverlen;
   int received = 0;
   int UDPport = 0;
@@ -75,7 +81,7 @@ FEC data instead? */
 
   int j;
   int32_t fh = 0;
-  const char* filename = "input.txt";
+  const char* filename = "in.txt";
   if((fh = open(filename, O_RDONLY)) == -1){
     Die("Couldn't open the file");
   }
@@ -115,12 +121,11 @@ FEC data instead? */
 	
 	/* Bind the UDP socket */
 
-
 	/* Establish TCP connection */
 	if (connect(sock_tcp, (struct sockaddr *) &tcp_echoserver, sizeof(tcp_echoserver)) < 0) {
   		Die("Failed to connect with TCP server");
 	}
-/* Send the word to the server */
+/* Send the command to the server */
 	memset(&buffer, 0, TCPBUFFSIZE);
 	strcpy(buffer, OPEN);
 
@@ -140,8 +145,7 @@ FEC data instead? */
  		When \EOF send CLOSE
  */
   
-    bytes = recv(sock_tcp, command, TCPBUFFSIZE-1, 0);
-    
+    bytes = recv(sock_tcp, command, TCPBUFFSIZE-1, 0); 
   	command[bytes] = '\0';        /* Assure null terminated string */
   	fprintf(stdout,"We saw % d bytes saying %s \n",bytes,  command);
   	
@@ -150,7 +154,7 @@ FEC data instead? */
   		char * pEnd;
   		tmp = strtol(command+1, &pEnd, 10 );
   		UDPport = (int) tmp;
-  		fprintf(stdout, "We see port %d\n", UDPport);
+  		fprintf(stdout, "We are told to use UDP port %d\n", UDPport);
   	}
   	else{
   		/*So this was a message with UDP details. We need to parse the next bytes which
@@ -160,17 +164,14 @@ FEC data instead? */
   	}
   	bytes = 0;
 	}
-	
-	/*So now we know that UDPport is the port tha the other end is listening on
-	What is the best approach to sending the actual data? Probably need to 
-	divide it into functions. Start by just sending a big blob of data and getting
-	an ACK back...
-	*/
-
-	
-     if ((sock_udp = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
+/*So now we know that UDPport is the port tha the other end is listening on
+What is the best approach to sending the actual data? Probably need to 
+divide it into functions. Start by just sending a big blob of data and getting
+an ACK back...
+*/
+  if ((sock_udp = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
   	Die("Failed to create socket");
-      }
+  }
 
 /* Construct the server sockaddr_in structure */
 	memset(&udp_echoserver, 0, sizeof(udp_echoserver));       /* Clear struct */
@@ -178,20 +179,26 @@ FEC data instead? */
 	udp_echoserver.sin_addr.s_addr = inet_addr(argv[1]); /* IP address */
 	udp_echoserver.sin_port = htons(UDPport);       /* server port */
 
-    while (bytes < 14000){
-       bytes = read(fh, data, UDPBUFFSIZE);
-     
-/* Send the word to the server */
-      while(pointer < 14000){
-	if (sendto(sock_udp, data[pointer], UDPDGRAM, 0, (struct sockaddr *) &udp_echoserver, sizeof(udp_echoserver)) != UDPDGRAM) {
-	    Die("Mismatch in number of sent bytes");
+  bytes = read(fh, data, UDPBUFFSIZE); 
+	memset(&check, 0, sizeof(check));	
+	SHA1(data, 14000, check);
+ 
+	if ((sendto(sock_udp, data, 14000, 0, (struct sockaddr *) &udp_echoserver, sizeof	(udp_echoserver))) != 14000) {
+	    		Die("Mismatch in number of sent bytes");
+		}
+
+  for(j = 0; j < 500; j++){
+    printf("%c", data[j]);
+  }
+  printf("\n\n" );
+  for (j = 0; j < 20; j++){
+  	printf("%c", check[j]);
 	}
-      pointer 
-    }
-    }
-  	close(sock_udp);
-  	close(sock_tcp);
-  	exit(0);
+	printf("\n\n" );
+  close(sock_udp);
+  close(sock_tcp);
+  close(fh);
+  exit(0);
 }
 
 

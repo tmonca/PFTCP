@@ -37,7 +37,7 @@ correction data as reported loss...
 #include <unistd.h>
 #include <netinet/in.h>
 #define TCPBUFFSIZE 64  /*A compromise length*/
-#define UDPBUFFSIZE 14000 /*fixed for now*/
+#define UDPBUFFSIZE 1400 /*fixed for now*/
 #define UDPDGRAM 1400
 
 #define OPEN "open"
@@ -49,6 +49,12 @@ void Die(char *mess) { perror(mess); exit(1); }
 
 int main(int argc, char *argv[]) {
 	/*variables for TCP*/
+	
+	 if (argc != 4) {
+  	fprintf(stderr, "USAGE: TCPecho <server_ip> <port> <frequency of acks>\n");
+  	exit(1);
+    }
+	
 	int sock_tcp;
 	struct sockaddr_in tcp_echoserver;
 	char out_buffer[TCPBUFFSIZE];
@@ -66,6 +72,7 @@ int main(int argc, char *argv[]) {
   char reply_buffer[TCPBUFFSIZE];
   char buffer[TCPBUFFSIZE];
   unsigned char data[UDPBUFFSIZE];
+  unsigned char tmpBuff[UDPBUFFSIZE][atoi(argv[3])];
   
   unsigned char check[20];
   
@@ -87,10 +94,7 @@ FEC data instead? */
   }
   long fpoint = 0;
 	/*Check for correct usage*/
-    if (argc != 4) {
-  	fprintf(stderr, "USAGE: TCPecho <server_ip> <word> <port>\n");
-  	exit(1);
-    }
+   
 
 /* Create the TCP socket */
 	if ((sock_tcp = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
@@ -117,7 +121,7 @@ FEC data instead? */
 	memset(&tcp_echoserver, 0, sizeof(tcp_echoserver));
 	tcp_echoserver.sin_family = AF_INET;
 	tcp_echoserver.sin_addr.s_addr = inet_addr(argv[1]);
-	tcp_echoserver.sin_port = htons(atoi(argv[3]));
+	tcp_echoserver.sin_port = htons(atoi(argv[2]));
 	
 	/* Bind the UDP socket */
 
@@ -164,11 +168,7 @@ FEC data instead? */
   	}
   	bytes = 0;
 	}
-/*So now we know that UDPport is the port tha the other end is listening on
-What is the best approach to sending the actual data? Probably need to 
-divide it into functions. Start by just sending a big blob of data and getting
-an ACK back...
-*/
+
   if ((sock_udp = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
   	Die("Failed to create socket");
   }
@@ -178,23 +178,41 @@ an ACK back...
 	udp_echoserver.sin_family = AF_INET;                  /* Internet/IP */
 	udp_echoserver.sin_addr.s_addr = inet_addr(argv[1]); /* IP address */
 	udp_echoserver.sin_port = htons(UDPport);       /* server port */
-
-  bytes = read(fh, data, UDPBUFFSIZE); 
-	memset(&check, 0, sizeof(check));	
-	SHA1(data, 14000, check);
- 
-	if ((sendto(sock_udp, data, 14000, 0, (struct sockaddr *) &udp_echoserver, sizeof	(udp_echoserver))) != 14000) {
+	bytes = -1;
+	int remains = -1;
+	int counter = 0;
+do{
+   bytes = read(fh, data, UDPBUFFSIZE);  
+//	memset(&check, 0, sizeof(check));	
+//	SHA1(data, 1400, check);
+ if(bytes != UDPBUFFSIZE){
+ 	remains = bytes;
+ 	printf("set reamins to %d, bytes was %d\n", remains, bytes);
+	if ((sendto(sock_udp, data, remains, 0, (struct sockaddr *) &udp_echoserver, sizeof	(udp_echoserver))) != remains) {
 	    		Die("Mismatch in number of sent bytes");
-		}
 
-  for(j = 0; j < 500; j++){
+		}
+		counter++;
+	}
+  else{
+  	if ((sendto(sock_udp, data, UDPBUFFSIZE, 0, (struct sockaddr *) &udp_echoserver, sizeof	(udp_echoserver))) != UDPBUFFSIZE) {
+	    		Die("Mismatch in number of sent bytes");
+	    }
+	  counter++;
+	}
+	//printf(" count %d", counter);
+}
+while(counter < atoi(argv[3]));
+	printf(" count %d", counter);
+/*  for(j = 0; j < 500; j++){
     printf("%c", data[j]);
   }
   printf("\n\n" );
   for (j = 0; j < 20; j++){
   	printf("%c", check[j]);
 	}
-	printf("\n\n" );
+	printf("\n\n" );*/
+	
   close(sock_udp);
   close(sock_tcp);
   close(fh);

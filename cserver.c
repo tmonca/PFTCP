@@ -37,7 +37,7 @@ correction data as reported loss...
 #include <openssl/sha.h>
 
 #define MAXPENDING 5    /* Max connection requests */
-#define BUFFSIZE 14000
+#define BUFFSIZE 1400
 
 void Die(char *mess) { perror(mess); exit(1); }
 
@@ -53,7 +53,7 @@ void HandleClient(int rcvsock) {
 
   int32_t fh = 0;
 	const char* filename = "out.txt";
-  if((fh = open(filename, O_WRONLY|O_APPEND)) == -1){
+  if((fh = open(filename, O_WRONLY|O_TRUNC)) == -1){
     Die("Couldn't open the file");
   }
 
@@ -92,22 +92,24 @@ repeat...
   if (bind(udp_clientsock, (struct sockaddr *) &udp_echoserver, serverlen) < 0) {
   	Die("Failed to bind UDP server socket");
   } 
+  while(1){
 /* Receive a message from the client */
   if ((bytes = recvfrom(udp_clientsock, data, BUFFSIZE, 0, (struct sockaddr *) &udp_echoserver, &serverlen)) < 0) {
 	 	Die("Failed to receive message");
   }
-	for(j = 0; j < 500; j++){
-    printf("%c", data[j]);
-  }
-  printf("\n");
+	//for(j = 0; j < 500; j++){
+   // printf("%c", data[j]);
+  //}
+ // printf("\n");
   memset(&check, 0, sizeof(check));	
-  SHA1(data, 14000, check);
-  printf("\n\n" );
-  for (j = 0; j < 20; j++){
-  	printf("%c", check[j]);
-	}
-	printf("\n\n" );
-	write(fh, data, 14000);
+  //SHA1(data, 1400, check);
+  //printf("\n\n" );
+  //for (j = 0; j < 20; j++){
+ // 	printf("%c", check[j]);
+//	}
+//	printf("\n\n" );
+	write(fh, data, bytes);
+ }
   close(rcvsock);
   close(udp_clientsock);
   close(fh);

@@ -36,7 +36,7 @@ correction data as reported loss...
 #include <string.h>
 #include <unistd.h>
 #include <netinet/in.h>
-#define TCPBUFFSIZE 64  /*A compromise length*/
+#define TCPBUFFSIZE 20  /*A compromise length*/
 #define UDPBUFFSIZE 1400 /*fixed for now*/
 #define UDPDGRAM 1400
 
@@ -44,6 +44,7 @@ correction data as reported loss...
 #define CLOSE "close"
 #define RESEND "resend"
 #define CONNECT "connect"
+#define CHECK "check"
 
 void Die(char *mess) { perror(mess); exit(1); }
 
@@ -67,15 +68,14 @@ int main(int argc, char *argv[]) {
 	
 	/*variables for the UDP sender*/
   int sock_udp;
+  int ackPer = atoi(argv[3]);
   struct sockaddr_in udp_echoserver;
   struct sockaddr_in udp_echoclient;
   char reply_buffer[TCPBUFFSIZE];
   char buffer[TCPBUFFSIZE];
   unsigned char data[UDPBUFFSIZE];
-  unsigned char tmpBuff[UDPBUFFSIZE][atoi(argv[3])];
-  
+  unsigned char tmpBuff[ackPer][UDPBUFFSIZE];
   unsigned char check[20];
-  
   unsigned int udp_echolen, clientlen, serverlen;
   int received = 0;
   int UDPport = 0;
@@ -94,7 +94,6 @@ FEC data instead? */
   }
   long fpoint = 0;
 	/*Check for correct usage*/
-   
 
 /* Create the TCP socket */
 	if ((sock_tcp = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
@@ -132,23 +131,19 @@ FEC data instead? */
 /* Send the command to the server */
 	memset(&buffer, 0, TCPBUFFSIZE);
 	strcpy(buffer, OPEN);
-
-	if (send(sock_tcp, buffer, sizeof(buffer), 0) < 1) {
-  		Die("Mismatch in number of TCP sent bytes");
-	}
-	
+	printf("buffer is %s.\n", buffer);
+	strcpy(&buffer[4], " ");
+		printf("now buffer is %s.\n", buffer);
+	strcpy(&buffer[5], argv[3]);
+	printf("and now buffer is %s\n", buffer);
+	if (send(sock_tcp, buffer, sizeof(buffer), MSG_MORE) < 1) {
+  		Die("Failed sending TCP open - wrong no sent bytes");
+	}	
 /* Receive the word back from the server */
 	fprintf(stdout, "Received: ");
-	  int bytes = 1;
+	int bytes = 1;
+/*Find out which port to use for UDP*/
 	while (UDPport == 0) {
-      
- /*
- 		Use TCP as control. Once UDP details passed start sending data.
- 		Send the data in blocks of 10 datagrams.
- 		After 10th wait for ACK, then clear, send next 10.
- 		When \EOF send CLOSE
- */
-  
     bytes = recv(sock_tcp, command, TCPBUFFSIZE-1, 0); 
   	command[bytes] = '\0';        /* Assure null terminated string */
   	fprintf(stdout,"We saw % d bytes saying %s \n",bytes,  command);
@@ -181,43 +176,36 @@ FEC data instead? */
 	bytes = -1;
 	int remains = -1;
 	int counter = 0;
-do{
-   bytes = read(fh, data, UDPBUFFSIZE);  
-//	memset(&check, 0, sizeof(check));	
-//	SHA1(data, 1400, check);
- if(bytes != UDPBUFFSIZE){
- 	remains = bytes;
- 	printf("set reamins to %d, bytes was %d\n", remains, bytes);
-	if ((sendto(sock_udp, data, remains, 0, (struct sockaddr *) &udp_echoserver, sizeof	(udp_echoserver))) != remains) {
+	do{
+   	bytes = read(fh, data, UDPBUFFSIZE);  
+ 		if(bytes != UDPBUFFSIZE){
+ 			remains = bytes;
+ 			printf("set reamins to %d, bytes was %d\n", remains, bytes);
+			if ((sendto(sock_udp, data, remains, 0, (struct sockaddr *) &udp_echoserver, sizeof	(udp_echoserver))) != remains) {
 	    		Die("Mismatch in number of sent bytes");
-
+			}
+			counter++;
 		}
-		counter++;
-	}
-  else{
-  	if ((sendto(sock_udp, data, UDPBUFFSIZE, 0, (struct sockaddr *) &udp_echoserver, sizeof	(udp_echoserver))) != UDPBUFFSIZE) {
+  	else{
+  		if ((sendto(sock_udp, data, UDPBUFFSIZE, 0, (struct sockaddr *) &udp_echoserver, sizeof	(udp_echoserver))) != UDPBUFFSIZE) {
 	    		Die("Mismatch in number of sent bytes");
 	    }
-	  counter++;
-	}
+	  	counter++;
+		}
+		strcpy(tmpBuff[counter], data);
 	//printf(" count %d", counter);
-}
-while(counter < atoi(argv[3]));
-	printf(" count %d", counter);
-/*  for(j = 0; j < 500; j++){
-    printf("%c", data[j]);
-  }
-  printf("\n\n" );
-  for (j = 0; j < 20; j++){
-  	printf("%c", check[j]);
 	}
-	printf("\n\n" );*/
-	
+	while(counter < ackPer);
+	printf(" count %d\n", counter);
+	while(1){
+		bytes = recv(sock_tcp, command, TCPBUFFSIZE-1, 0); 
+  	command[bytes] = '\0';        /* Assure null terminated string */
+  	fprintf(stdout,"We saw % d bytes saying %s \n",bytes,  command);
+  }
   close(sock_udp);
   close(sock_tcp);
   close(fh);
   exit(0);
 }
-
 
 

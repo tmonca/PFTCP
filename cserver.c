@@ -1,26 +1,11 @@
-
 /*******************************************
 *
 * receives data via TCP, sends UDP reply
 
-Modify to use TCP as control channel
-Send data chunk. ACK with count and cksum
+Uses TCP as control channel
+Receives data chunk. ACK with count and cksum
 
-If ACK is wrong we re-send the chunk
-
-This prog needs to
-passive open TCP session on port xyz
-then open UDP socket
-send details of UDP socket to client via TCP
-Listen for connection on UDP
-NB later on we can add security here like MPTCP
-
-Once data flows on UDP it sends back ACKs
-question: coping with re-ordering?
-
-Other possibility would be to use FEC, etc
-Once all chunks sent sender sends as much 
-correction data as reported loss...
+If ACK is wrong client will resend the chunk
 
 *
 ********************************************/
@@ -38,16 +23,31 @@ correction data as reported loss...
 
 #define MAXPENDING 5    /* Max connection requests */
 #define BUFFSIZE 1400
-#define CMDSIZE 20
+#define CMDSIZE 60
 
 void Die(char *mess) { perror(mess); exit(1); }
 
-void HandleClient(int rcvsock) {
-  char buffer[BUFFSIZE];
-  char data[BUFFSIZE];
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+* 
+* HandleClient is passed a TCP socket (for control) and a UDP
+* port number (for creating the data channel). It listens on 
+* the TCP socket. Once it receives an open command , it creates
+* the UDP socket and sends back details of this to the client.
+* 
+* The client then sends the first N chunks of data. Once these
+* are received it pauses, claculates the SHA1 of these chunks,
+* sends this back to the client and waits for an ACK. This will
+* either tell it to proceed, in which case it writes the data
+* to file and goes back to listen for the next chunks, or it
+* deletes what it has received and gets resent it.
+*
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-  unsigned char check[21];
-  char command[7];
+void HandleClient(int rcvsock, int Uport) {
+  char buffer[BUFFSIZE];  // not sure I need so many buffers
+  char data[BUFFSIZE]; // a buffer for the immediate 
+  unsigned char check[20];	// a buffer for the SHA1 checksum
+  char command[CMDSIZE]; // a buffer for the TCP commands
   char ackCount[CMDSIZE];
   char sum, temp, tmp2;
   int ackPer = 0; //how often will we be sending acks? received in "open NN" command 
@@ -57,44 +57,47 @@ void HandleClient(int rcvsock) {
   int sent = -1;
   int totalBytes = 0;
 
+/* Open a file to write the output. For now give it fixed name */
   int32_t fh = 0;
 	const char* filename = "out.txt";
   if((fh = open(filename, O_WRONLY|O_TRUNC)) == -1){
     Die("Couldn't open the file");
   }
 
-  /* Receive message */
+/* Receive initial message into buffer */
   if ((received = recv(rcvsock, buffer, CMDSIZE, 0)) < 0) {
     Die("Failed to receive initial bytes from client");
   }
+ 
+/* use command as temporary store for "open" */
   fprintf(stderr, "TCP received %s \n", buffer);
   memset(&command, 0, sizeof(command));
 	strcpy(command, "open");
 
+/* check that the message we got said "open" 
+* Longer term can I make this a standalone function?
+*/
+
   if(!strncmp(buffer, command, 4))
-  	printf("we got an open (and received is %d)\n", received);
+  	printf("we got an open \n");
   for (j = 5; j < received; j++){
   	ackCount[j - 5] = buffer[j];
   }
+
+/* included in the open message is the frequency at which 
+* client expects to see the ACKs.
+*/
   ackCount[received - 5] = '\0';
   ackPer = atoi(ackCount);
-  char tmp[ackPer * BUFFSIZE]; // 
-  
-  memset(&tmp, 0, sizeof(tmp));       /* Clear memory */
   printf("ACK every %s which is an int: %d\n", ackCount, ackPer);
-  sent = 1;
-
-  while (1) {
-    /* Send back command */
-    strcpy(command, "U 1313");  //longer term we should echo ackPer
-    command[6]  = '\0';
-    printf("Sending back %s \n", command);
-    if ((sent = send(rcvsock, command, 7, MSG_MORE)) != 7) {
-      	Die("Failed to send UDP port command ");
-    }
-	printf("out of the loop\n");
-	
-    /* Create the UDP socket */ 
+  
+/* Now we can create an appropriate size buffer to hold the
+* incoming messages. Make this a function?
+*/
+  char tmp[ackPer * BUFFSIZE];
+  memset(&tmp, 0, sizeof(tmp));       /* Clear memory */
+  
+/* crerate the new UDP socket */ 
 	if ((udp_clientsock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
 		Die("Failed to create UDP socket");
 	}
@@ -102,125 +105,133 @@ void HandleClient(int rcvsock) {
 	memset(&udp_echoserver, 0, sizeof(udp_echoserver));       /* Clear struct */
 	udp_echoserver.sin_family = AF_INET;                  /* Internet/IP */
 	udp_echoserver.sin_addr.s_addr = inet_addr("127.0.0.1");   /* Any IP address */
-	udp_echoserver.sin_port = htons(1313);  	/*hard wire the UDP to port 1313*/
-  
-/*
-We need to listen on the UDP socket. When we get date write it to some structure.
-After N bytes we send back some sort of checksum (IP cksum?)
-So... have a large buffer we fill. Once full cksum it, send back result by TCP.
-If we get OK back (TCP) send the buffer to a file, then send back ready to receive,
-repeat...
-*/
+	udp_echoserver.sin_port = htons(Uport);  	/*use port from command line*/
+
+/* Bind to the UDP socket*/
   serverlen = sizeof(udp_echoserver);
   if (bind(udp_clientsock, (struct sockaddr *) &udp_echoserver, serverlen) < 0) {
   	Die("Failed to bind UDP server socket");
   } 
+  
+	if((connect(udp_clientsock, (struct sockaddr *) &udp_echoserver, serverlen) ) < 0) {
+		Die("Failed to connect UDP server socket");
+  } 
+/* Send back details of UDP port that will be used*/
+	sprintf(command, "U %d", Uport);  //longer term we should also echo ackPer
+  command[6]  = '\0';
+  printf("Sending back %s \n", command);
+  if ((sent = send(rcvsock, command, 7, MSG_MORE)) != 7) {
+    Die("Failed to send UDP port command ");
+  }
 
-	//kill = 0;
-
- // while(kill != 1){
+/* Create a loop that only exits once told to by the client */
+	while(kill != 1){
+	
+/* set the pointer and byteCount to 0*/
   	pointer = 0;
   	byteCount = 0;
-
- 	 	do{
+  	totalBytes = 0;
+		
+/* create a loop for receiving the data. NB this is the awkward
+* bit as we need to be able to return to this loop repeatedly.
+* Perhaps the solution is to have this as a permanent loop but
+* every ackPer segments we call another function to do the checking?
+*/
+ 	 	while (1) {
   		
-		/* Receive a message from the client */
-  		if ((bytes = recvfrom(udp_clientsock, data, BUFFSIZE, 0, (struct sockaddr *) &udp_echoserver, &serverlen)) < 0) {
-	 		Die("Failed to receive message");
+/* Receive a message from the client */
+  		if ((bytes = recv(udp_clientsock, data, BUFFSIZE, 0)) < 0) {
+	 			Die("Failed to receive message");
   		}
-  		byteCount += bytes;
- 			//use memcpy to copy to the next chunk...
+  		byteCount += bytes;  //keeps a running copunt of number of bytes
+  		totalBytes += bytes;
+/* use memcpy to copy to the tmp storage */
  			memcpy(&tmp[byteCount], data, bytes);
+ 			
+/* Increment the pointer. Check to see if we have had ackPer
+* segments and pause if we have. Then calculate the SHA1 and
+* send this by TCP. Client will respond yes or no 
+*/		
  			pointer++;
- 			j = fcntl(rcvsock, F_GETFL);
-			printf("%d\n", j);
-			
-			if(pointer == ackPer){
-				totalBytes += byteCount;
- 	 			memset(&check, 0, 21);	
-  			SHA1(tmp, byteCount, check);
-  			check[20] = '\0';
-  			pause = 1;
-  			sent = 0;
-  			printf("check = %s.\n", check);
-  	
-  			while(pause == 1){
-  				//wait to hear an OK from the sender (client)
-					//Then we can write those bytes to file		
-    			strcpy(command, "ACK ");  //build the ack message
+ 			if(pointer%ackPer == 0) {
+ 				printf("Time to calculate checksum\n");
+ 				while (1){
+ 					memset(&check, 0, 20);
+ 					sent = 0;	
+  				SHA1(tmp, byteCount, check);
+  				printf("Check = ");
+  				for(j = 0; j < 20; j++){
+  					
+  					printf("%c", check[j]);
+  				}
+  				printf(".\n");
+ 					strcpy(command, "ACK ");  //build the ack message
     			memcpy(&command[4], check, 20);
     			char number[9];
     			sprintf(number, " %d", totalBytes);
+    			fprintf(stderr, "totalBytes is %d\n", totalBytes);
     			strcpy(&command[24], number);
-					printf("length of command is %d. sending %s.\n",sizeof(command), command);
-					j = fcntl(rcvsock, F_GETFL);
-					printf("Is socket open? %d\n", j);
-    			if ((sent = send(rcvsock, command, 30, MSG_MORE)) != 30) {
+    			
+					fprintf(stderr, "Sending %s.\n", command);
+					if ((sent = send(rcvsock, command, 30, MSG_MORE)) != 30) {
       			Die("Failed to send TCP ack in reply");
     			}
-  				//now we will wait for an ack - if OK we write the data then loop back to next receive
-					write(fh, tmp, byteCount);
-					pause = 0;
-				}			
+    			/* Receive  message into buffer */
+  				if ((received = recv(rcvsock, buffer, CMDSIZE, 0)) < 0) {
+   					 Die("Failed to receive return from client");
+  					}
+ 
+					/* use command as temporary store for "open" */
+  				fprintf(stderr, "TCP received %s \n", buffer);
+  				memset(&command, 0, sizeof(command));
+					strcpy(command, "yes");
+
+				/* check that the message we got said "open" 
+				* Longer term can I make this a standalone function?
+				*/
+  				if(!strncmp(buffer, command, 4)){
+  					printf("we got an open (and received is %d)\n", received);
+  					break;
+ 					}
+ 				}
+ 			}
 		}
-/*		j = fcntl(rcvsock, F_GETFL);  //  WHY IS IT NOW CLOSED???????? GRRRRRRRR!
-			printf("%d\n", j);
-		totalBytes += byteCount;
-	/*calculate the SHA1
- 
- 	 	memset(&check, 0, 21);	
-  	SHA1(tmp, byteCount, check);
-  	check[20] = '\0';
-  	pause = 1;
-  	sent = 0;
-  	printf("check = %s.\n", check);
-  	
-  	while(pause == 1){
-  		//wait to hear an OK from the sender (client)
-			//Then we can write those bytes to file		
-    	strcpy(command, "ACK ");  //build the ack message
-    	memcpy(&command[4], check, 20);
-    	char number[9];
-    	sprintf(number, " %d", totalBytes);
-    	strcpy(&command[24], number);
-			printf("length of command is %d. sending %s.\n",sizeof(command), command);
-			j = fcntl(rcvsock, F_GETFL);
-			printf("Is socket open? %d\n", j);
-    	if ((sent = send(rcvsock, command, 30, MSG_MORE)) != 30) {
-      		Die("Failed to send TCP ack in reply");
-    	}
-  		//now we will wait for an ack - if OK we write the data then loop back to next receive
-			write(fh, tmp, byteCount);
-			
-			kill = 1;  //temporarily here to kill server prematurely*/
-			//pause = 0;
-		} while (pointer < ackPer);
-		kill = 1;
-	
- 
-  close(rcvsock);
-  close(udp_clientsock);
-  close(fh);
   }
+  
 }
 
+
+
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+* 
+* main function opens a TCP socket, listens on that socket
+* and spawns a new socket when client tries to connect
+*
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
 int main(int argc, char *argv[]) {
+
   int tcp_serversock, tcp_clientsock;
   struct sockaddr_in tcp_echoserver, tcp_echoclient;
 
-  if (argc != 2) {
-    fprintf(stderr, "USAGE: echoserver <port>\n");
+/* Check for the correct useage */
+  if (argc != 3) {
+    fprintf(stderr, "USAGE: echoserver <TCP port> <UDP port>\n");
     exit(1);
   }
-  /* Create the TCP socket */
+  
+  int UDPport = atoi(argv[2]);
+  
+/* Create the TCP socket */
   if ((tcp_serversock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
     Die("Failed to create socket");
   }
-  /* Construct the TCP server sockaddr_in structure */
-  memset(&tcp_echoserver, 0, sizeof(tcp_echoserver));       /* Clear struct */
-  tcp_echoserver.sin_family = AF_INET;                  /* Internet/IP */
-  tcp_echoserver.sin_addr.s_addr = inet_addr("127.0.0.1");   /* Incoming addr */
-  tcp_echoserver.sin_port = htons(atoi(argv[1]));       /* server port */
+  
+/* Construct the TCP server sockaddr_in structure */
+  memset(&tcp_echoserver, 0, sizeof(tcp_echoserver));      /* Clear struct */
+  tcp_echoserver.sin_family = AF_INET;                     /* Internet/IP */
+  tcp_echoserver.sin_addr.s_addr = inet_addr("127.0.0.1"); /* Incoming addr */
+  tcp_echoserver.sin_port = htons(atoi(argv[1]));          /* server port */
 
 /* Bind the server socket */
 	if (bind(tcp_serversock, (struct sockaddr *) &tcp_echoserver, sizeof(tcp_echoserver)) < 0) {
@@ -231,17 +242,19 @@ int main(int argc, char *argv[]) {
 	if (listen(tcp_serversock, MAXPENDING) < 0) {
   	Die("Failed to listen on server socket");
 	}
-  /* Run until cancelled */
+	
+/* Run until cancelled */
   while (1) {
     unsigned int clientlen = sizeof(tcp_echoclient);
     /* Wait for client connection */
     if ((tcp_clientsock = accept(tcp_serversock, (struct sockaddr *) &tcp_echoclient, &clientlen)) < 0) {
       Die("Failed to accept client connection");
     }
-    fprintf(stdout, "Client connected: %s\n", inet_ntoa(tcp_echoclient.sin_addr));
     
-    HandleClient(tcp_clientsock);
+ /* Call the handler function (this does the heavy lifting) */
+    HandleClient(tcp_clientsock, UDPport);
   }
 }
+
 
 

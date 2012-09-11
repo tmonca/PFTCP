@@ -99,7 +99,7 @@ void HandleClient(int rcvsock, int Uport) {
 /* Construct the UDP server sockaddr_in structure */
 	memset(&udp_server, 0, sizeof(udp_server));       /* Clear struct */
 	udp_server.sin_family = AF_INET;                  /* Internet/IP */
-	udp_server.sin_addr.s_addr = inet_addr("127.0.0.1");   /* Any IP address */
+	udp_server.sin_addr.s_addr = inet_addr("INADDR_ANY");   /* Any IP address */
 	udp_server.sin_port = htons(Uport);  	/*use port from command line*/
 
 /* Bind to the UDP socket*/

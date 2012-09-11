@@ -193,6 +193,7 @@ void HandleClient(int rcvsock, int Uport) {
   				}
   				else if(readCommand(buffer, "close")){
   					printf("we got a close\n");
+  					write(fh, tmp, byteCount);
   					close(fh);
   					close(rcvsock);
   					close(udp_sock);

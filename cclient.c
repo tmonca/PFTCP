@@ -114,7 +114,7 @@ FEC data instead? */
 	/* Construct the UDP server sockaddr_in structure */
 	memset(&udp_echoserver, 0, sizeof(udp_echoserver));       /* Clear struct */
 	udp_echoserver.sin_family = AF_INET;                  /* Internet/IP */
-	udp_echoserver.sin_addr.s_addr = inet_addr("127.0.0.1");   /* Any IP address */
+	udp_echoserver.sin_addr.s_addr = inet_addr("128.232.14.89");   /* Any IP address */
 	/*udp_echoserver.sin_port = htons(atoi(argv[3])+1);        server port */
 	udp_echoserver.sin_port = htons(13);
 		

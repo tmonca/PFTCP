@@ -27,6 +27,8 @@ If ACK is wrong client will resend the chunk
 
 void Die(char *mess) { perror(mess); exit(1); }
 
+int readCommand(char* , char* );
+
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 * 
 * HandleClient is passed a TCP socket (for control) and a UDP
@@ -69,21 +71,14 @@ void HandleClient(int rcvsock, int Uport) {
     Die("Failed to receive initial bytes from client");
   }
  
-/* use command as temporary store for "open" */
-  fprintf(stderr, "TCP received %s \n", buffer);
-  memset(&command, 0, sizeof(command));
-	strcpy(command, "open");
+/* check that the message we got said "open" */
 
-/* check that the message we got said "open" 
-* Longer term can I make this a standalone function?
-*/
-
-  if(!strncmp(buffer, command, 4))
-  	printf("we got an open \n");
+  if(readCommand(buffer, "open")){
+		printf("we got an open \n");
+	}
   for (j = 5; j < received; j++){
-  	ackCount[j - 5] = buffer[j];
+  		ackCount[j - 5] = buffer[j];
   }
-
 /* included in the open message is the frequency at which 
 * client expects to see the ACKs.
 */
@@ -137,9 +132,9 @@ void HandleClient(int rcvsock, int Uport) {
 * Perhaps the solution is to have this as a permanent loop but
 * every ackPer segments we call another function to do the checking?
 */
-
+		
 		int bytes1st = 0;
- 	 	while (pointer < ackPer) {
+ 	 	while (1) {
 			
 /* Receive a message from the client */
 			
@@ -147,8 +142,9 @@ void HandleClient(int rcvsock, int Uport) {
   		if(bytes1st == 0){
   			bytes1st = bytes;
   		}
-  		printf("bytes = %d\n", bytes);
-  		
+  		pointer++;
+  		printf("%d: bytes = %d\n", pointer, bytes);
+
 			/* use memcpy to copy to the tmp storage */
  			memcpy(&tmp[byteCount], data, bytes);
  			byteCount += bytes;  //keeps a running copunt of number of bytes
@@ -157,15 +153,9 @@ void HandleClient(int rcvsock, int Uport) {
 * segments and pause if we have. Then calculate the SHA1 and
 * send this by TCP. Client will respond yes or no 
 */		
- 			pointer++;
- 			printf("%d\n", pointer);
- 			if(bytes < bytes1st){
- 				printf("we got to the end of the file\n");
- 				break;
- 			}
- 			else if (pointer%ackPer == 0) {
+ 			if( (pointer%ackPer == 0) || (bytes < bytes1st)){
  				printf("Time to calculate intermediate checksum\n");
- 				write(fh, tmp, byteCount);
+ 				
  				while (1){
  					memset(&check, 0, 20);
  					sent = 0;	
@@ -193,74 +183,36 @@ void HandleClient(int rcvsock, int Uport) {
   				if ((received = recv(rcvsock, buffer, CMDSIZE, 0)) < 0) {
    					 Die("Failed to receive return from client");
   				}
- 
-					/* use command as temporary store for "open" */
+
   				fprintf(stderr, "TCP received %s \n", buffer);
-  				memset(&command, 0, sizeof(command));
-					strcpy(command, "yes");
 
-				/* check that the message we got said "open" 
-				* Longer term can I make this a standalone function?
-				*/
-  				if(!strncmp(buffer, command, 3)){
+  				if(readCommand(buffer, "yes")) {
   					printf("we got a yes\n");
+  					write(fh, tmp, byteCount);
   					break;
- 					}
- 				}
- 				pointer = 0;
- 				byteCount = 0;
- 			}
- 		}		  		
- 			if(bytes) {
- 				printf("Time to calculate checksum\n");
- 				write(fh, tmp, byteCount);
- 				while (1){
- 					memset(&check, 0, 20);
- 					sent = 0;	
-  				SHA1(tmp, byteCount, check);
-  				printf("Check = ");
-  				for(j = 0; j < 20; j++){
-  					
-  					printf("%x", check[j]);
   				}
-  				printf(".\n");
- 					strcpy(command, "ACK ");  //build the ack message
-    			memcpy(&command[4], check, 20);
-    			char number[9];
-    			sprintf(number, " %d", totalBytes);
-    			fprintf(stderr, "totalBytes is %d\n", totalBytes);
-    			strcpy(&command[24], number);
-  
-					fprintf(stderr, "Sending %s.\n", command);
-					if ((sent = send(rcvsock, command, 35, 0)) < 0) {
-      			Die("Failed to send TCP ack in reply");
-    			}
-
-    			printf("sent = %d bytes\n", sent);
-    			/* Receive  message into buffer */
-  				if ((received = recv(rcvsock, buffer, CMDSIZE, 0)) < 0) {
-   					 Die("Failed to receive return from client");
-  				}
- 
-					/* use command as temporary store for "open" */
-  				fprintf(stderr, "TCP received %s \n", buffer);
-  				memset(&command, 0, sizeof(command));
-					strcpy(command, "yes");
-
-				/* check that the message we got said "open" 
-				* Longer term can I make this a standalone function?
-				*/
-  				if(!strncmp(buffer, command, 3)){
-  					printf("we got a yes\n");
+  				else if(readCommand(buffer, "close")){
+  					printf("we got a close\n");
+  					close(fh);
+  					close(rcvsock);
+  					close(udp_sock);
+  					exit(0);
+  				}	
+  				else{
   					break;
- 					}
- 				}
- 			}
-		
+  				}	
+ 			 }		
+ 			 pointer = 0;
+ 			 byteCount = 0;
+ 			}		
+ 		}			
   }
-  
 }
 
+int readCommand(char* buffer, char* command){
+	int length = sizeof(command);
+	return !(strncmp(buffer, command, length));
+}
 
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *

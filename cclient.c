@@ -47,10 +47,12 @@ correction data as reported loss...
 #define CHECK "check"
 #define YES "yes"
 #define NO "not"
+#define CLOSE "close"
+#define MORE "more"
 
 void Die(char *mess) { perror(mess); exit(1); }
-
-int checking(int TCPSock, unsigned char * buffer);
+int UDP(int , struct sockaddr_in , int , char* , int , int , int );
+int checking(int, unsigned char *, int);
 
 int main(int argc, char *argv[]) {
 	/*variables for TCP*/
@@ -69,16 +71,16 @@ int main(int argc, char *argv[]) {
 	unsigned int tcp_echolen;
 	
 	int pointer;
-	
+	int final = 0;
 	/*variables for the UDP sender*/
   int sock_udp;
   int ackPer = atoi(argv[3]);
+  printf("ackPer set to %d\n", ackPer);
   struct sockaddr_in udp_echoserver;
   struct sockaddr_in udp_echoclient;
   char reply_buffer[TCPBUFFSIZE];
   char buffer[TCPBUFFSIZE];
  	char data[UDPBUFFSIZE];
-  char tmpBuff[ackPer][UDPBUFFSIZE];
   char checkBuffer[ackPer * UDPBUFFSIZE];
   unsigned char check[20];
   unsigned int udp_echolen, clientlen, serverlen;
@@ -136,11 +138,9 @@ FEC data instead? */
 /* Send the command to the server */
 	memset(&buffer, 0, TCPBUFFSIZE);
 	strcpy(buffer, OPEN);
-	printf("buffer is %s.\n", buffer);
 	strcpy(&buffer[4], " ");
-		printf("now buffer is %s.\n", buffer);
 	strcpy(&buffer[5], argv[3]);
-	printf("and now buffer is %s\n", buffer);
+	printf("command is %s\n", buffer);
 	if (send(sock_tcp, buffer, sizeof(buffer), MSG_MORE) < 1) {
   		Die("Failed sending TCP open - wrong no. sent bytes");
 	}	
@@ -179,61 +179,93 @@ FEC data instead? */
 	udp_echoserver.sin_addr.s_addr = inet_addr(argv[1]); /* IP address */
 	udp_echoserver.sin_port = htons(UDPport);       /* server port */
 	bytes = -1;
-	int end = -1;
+
 	int counter = 0;
 	int cumulate = 0;
 	int UDPbytes = 0;
 	int rtn = -666;
-	int k;
 
 	int sizeofUDP = sizeof(udp_echoserver);
-	while(end != 1){
-		for(j = 0; j < ackPer; j++){
-			UDPbytes = read(fh, data, UDPBUFFSIZE); 
-			memcpy(&checkBuffer[cumulate], data, UDPbytes);
-			counter++;
-			cumulate += UDPbytes;
-			if(UDPbytes < UDPBUFFSIZE || counter%ackPer == 0){
-				
-				if(UDPbytes < UDPBUFFSIZE ){
-					printf("got to the end with %d bytes\n", UDPbytes);
-					end = 1;
-				}
-				if ((sendto(sock_udp, data, UDPbytes, 0, (struct sockaddr *) &udp_echoserver, sizeofUDP)) != UDPbytes) {
-	    		Die("Mismatch in number of sent bytes (EOF)");
-	   		}
-	   		
-				memset(&check, 0, 20);	
-  			SHA1(checkBuffer, cumulate, check);
-  			printf("Check = ");
-  			for(k = 0; k < 20; k++){		
-  				printf("%x", check[k]);
-  			}
-  			printf(".\n");
-	   		
-	   		rtn = checking(sock_tcp, check);
-	   		cumulate = 0;
-				//break;
-			}
-			else if ((sendto(sock_udp, data, UDPBUFFSIZE, 0, (struct sockaddr *) &udp_echoserver, sizeofUDP)) != UDPBUFFSIZE) {
-	    	Die("Mismatch in number of sent bytes");
-	   	}
-			
-			printf("%d\n", counter);
+	do {
+		UDPbytes = read(fh, data, UDPBUFFSIZE);
+		memcpy(&checkBuffer[cumulate], data, UDPbytes);
+		counter++;
+		cumulate += UDPbytes;
+		printf("%d: %dbytes, cumulate = %dbytes\n", counter, UDPbytes, cumulate);
+		if(UDPbytes < UDPBUFFSIZE){
+			final = 1;
+			printf("SETTING final\n");
 		}
-
+		if((UDPbytes == 0)){
+			printf("at end of file\n");
+			if(final)
+				break;
+		}
 		
-	}
-	printf(" count %d, rtn %d\n", counter, rtn);
-	bytes = 0;
-	
+		if((counter%ackPer == 0) || (final)){
+		//}
+			if((rtn = UDP(sock_udp, udp_echoserver, sock_tcp, checkBuffer, counter, UDPbytes, final)) != cumulate){
+				printf("rtn was %d\n", rtn);
+				Die("Something went wrong with number of bytes ");
+			}
+		counter = 0;
+		cumulate = 0;
+		}
+	} while(UDPbytes);
+	printf("out of the loop - must be end, counter = %d, UDPbytes = %d\n", counter, UDPbytes);
+	/*if((rtn = UDP(sock_udp, udp_echoserver, sock_tcp, checkBuffer, counter, UDPbytes, final)) != UDPbytes){
+		printf("rtn was %d\n", rtn);
+		Die("Something went wrong with number of bytes ");
+	}*/
   close(sock_udp);
   close(sock_tcp);
   close(fh);
   exit(0);
 }
 
-int checking(int TCPSock, unsigned char * buffer){
+// at this point we can call a UDP send function. The return should allow us to proceed
+// needs to get UDP and TCP sockets, buffer, counter, UDPbytes, 
+
+int UDP(int UDPSock, struct sockaddr_in udp_echoserver, int TCPSock, char* buffer, int count, int lastSeg, int final){
+	int j, k, size;
+	int remaining = 0;
+	int rtn = 0;
+	int test = 1;
+	unsigned char check[20];
+	memset(&check, 0, 20);
+	size = sizeof(udp_echoserver);
+	while(test > 0){
+		for(j = 0; j < count -1; j++){
+			if ((sendto(UDPSock, &buffer[rtn], UDPBUFFSIZE, 0, (struct sockaddr *) &udp_echoserver, size)) != UDPBUFFSIZE) {
+	   		Die("Mismatch in number of sent bytes (EOF)");
+			}
+			rtn += UDPBUFFSIZE;
+		}
+		if(lastSeg < UDPBUFFSIZE ){
+			printf("This was the last %d bytes\n", lastSeg);
+			remaining = lastSeg;
+		}
+		else{
+			remaining = UDPBUFFSIZE;
+		}
+		if ((sendto(UDPSock, &buffer[rtn], remaining, 0, (struct sockaddr *) &udp_echoserver, size)) != remaining) {
+	   	Die("Mismatch in number of sent bytes (final)");
+		}
+		rtn += remaining;
+		printf(" bytes sent was %d\n", rtn);
+		SHA1(buffer, rtn, check);
+  	printf("Check in UDP = ");
+  	for(k = 0; k < 20; k++){		
+  		printf("%x", check[k]);
+  	}
+  	printf("\n");
+  	test = checking(TCPSock, check, final);	
+  	
+	}
+	return rtn;
+}	
+	
+int checking(int TCPSock, unsigned char * buffer, int final){
 	int j, flag;
 	int bytes = 0;
 	char receive[TCPBUFFSIZE];
@@ -243,7 +275,9 @@ int checking(int TCPSock, unsigned char * buffer){
 	//so we listen for a response:
 	memset(&receive, 0, 35);
 	while(bytes == 0){
-  	bytes = recv(TCPSock, receive, TCPBUFFSIZE-1, 0);
+  	if((bytes = recv(TCPSock, receive, TCPBUFFSIZE-1, 0)) < 0){
+  		Die("Oh bollocks!");
+  	}
   	if (bytes > 0){
   		receive[bytes] = '\0';    /* Assure null terminated string */
   		fprintf(stdout,"We saw % d bytes saying %s \n",bytes,  receive);
@@ -255,72 +289,36 @@ int checking(int TCPSock, unsigned char * buffer){
   			printf("\n");
   			//so send back a reply
   			
-  		if((strncmp(buffer,tmp, 20)) == 0){
+  		if(((strncmp(buffer,tmp, 20)) == 0) && final){
+  			memset(&command, 0, TCPBUFFSIZE);
+				strcpy(command, CLOSE);
+				command[3], '\0';
+				printf("command is %s\n", command);
+				flag = 0;
+			}
+			else if((strncmp(buffer,tmp, 20)) == 0){
   			memset(&command, 0, TCPBUFFSIZE);
 				strcpy(command, YES);
 				command[3], '\0';
-				printf("command is %s", command);
-				flag = 1;
+				printf("command is %s\n", command);
+				flag = 0;
 			}
 			else {
 				memset(&command, 0, TCPBUFFSIZE);
 				strcpy(command, NO);
 				command[3], '\0';
-				printf("command is %s", command);
-				flag = 0;
+				printf("command is %s\n", command);
+				flag = 1; //need to retransmit...
 			}
 				
 			if (send(TCPSock, command, sizeof(buffer), MSG_MORE) < 1) {
   				Die("Failed sending TCP check - wrong no sent bytes");
 			}
-
+			
 			return flag;
 		}
   }
-  return -1;
+  return -1; //undefined error case
 	
 }
 
-/*int checking(int TCPSock, unsigned char * buffer, int length){
-	unsigned char check[20];
-	char command[TCPBUFFSIZE];
-	char receive[TCPBUFFSIZE];
-	int j, flag;
-	int bytes = 0;
-	memset(&check, 0, 20);	
-  SHA1(buffer, length, check);
-  printf("Check = ");
-  for(j = 0; j < 20; j++){		
-  		printf("%c", check[j]);
-  }
-  printf(".\n");
-  while(bytes == 0){
-  	bytes = recv(TCPSock, receive, TCPBUFFSIZE-1, 0);
-  	if (bytes > 0){
-  		receive[bytes] = '\0';    /* Assure null terminated string 
-  		fprintf(stdout,"We saw % d bytes saying %s \n",bytes,  receive);
-  			//so send back a reply
-  		if((strncmp(check,receive,20)) == 0){
-  			memset(&command, 0, TCPBUFFSIZE);
-				strcpy(command, YES);
-				command[3], '\0';
-				printf("command is %s", command);
-				flag = 1;
-			}
-			else {
-				memset(&command, 0, TCPBUFFSIZE);
-				strcpy(command, NO);
-				command[3], '\0';
-				printf("command is %s", command);
-				flag = 0;
-			}
-				
-			if (send(TCPSock, command, sizeof(buffer), MSG_MORE) < 1) {
-  				Die("Failed sending TCP check - wrong no sent bytes");
-			}
-
-			return flag;
-		}
-  }
-  return -1;
-}*/

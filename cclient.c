@@ -57,8 +57,8 @@ int checking(int, unsigned char *, int);
 int main(int argc, char *argv[]) {
 	/*variables for TCP*/
 	
-	 if (argc != 5) {
-  	fprintf(stderr, "USAGE: TCPecho <server_ip> <tcp_port> <local_ip> <local_port> <frequency of acks>\n");
+	 if (argc != 6) {
+  	fprintf(stderr, "USAGE: TCPecho <server_ip> <remote_port> <local_ip> <local port> <frequency of acks>\n");
   	exit(1);
     }
 	

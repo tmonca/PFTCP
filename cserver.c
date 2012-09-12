@@ -245,7 +245,7 @@ int main(int argc, char *argv[]) {
 /* Construct the TCP server sockaddr_in structure */
   memset(&tcp_echoserver, 0, sizeof(tcp_echoserver));      /* Clear struct */
   tcp_echoserver.sin_family = AF_INET;                     /* Internet/IP */
-  tcp_echoserver.sin_addr.s_addr = inet_addr("127.0.0.1"); /* Incoming addr */
+  tcp_echoserver.sin_addr.s_addr = inet_addr(argv[2]); /* Incoming addr */
   tcp_echoserver.sin_port = htons(atoi(argv[1]));          /* server port */
 
 /* Bind the server socket */

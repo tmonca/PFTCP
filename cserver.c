@@ -144,6 +144,10 @@ void HandleClient(int rcvsock, int Uport, in_addr_t address) {
   		if(bytes1st == 0){
   			bytes1st = bytes;
   		}
+  		if(byteCount == 0){
+  			start = time(NULL);
+  			printf("setting time to %d\n", start);
+  		}
   		pointer++;
   		printf("%d: bytes = %d\n", pointer, bytes);
 
@@ -151,7 +155,7 @@ void HandleClient(int rcvsock, int Uport, in_addr_t address) {
  			memcpy(&tmp[byteCount], data, bytes);
  			byteCount += bytes;  //keeps a running copunt of number of bytes
   		totalBytes += bytes;
-  		start = time(NULL);
+  	
 	
 /* Increment the pointer. Check to see if we have had ackPer
 * segments and pause if we have. Then calculate the SHA1 and

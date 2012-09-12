@@ -36,6 +36,7 @@ correction data as reported loss...
 #include <string.h>
 #include <unistd.h>
 #include <netinet/in.h>
+
 #define TCPBUFFSIZE 60  /*A compromise length*/
 #define UDPBUFFSIZE 1400 /*fixed for now*/
 #define UDPDGRAM 1400
@@ -266,7 +267,7 @@ int UDP(int UDPSock, struct sockaddr_in udp_echoserver, int TCPSock, char* buffe
 	
 int checking(int TCPSock, unsigned char * buffer, int final){
 	int j, flag, elapsed;
-	time_t start, now;
+
 	int bytes = 0;
 	char receive[TCPBUFFSIZE];
 	char command[TCPBUFFSIZE];
@@ -274,11 +275,10 @@ int checking(int TCPSock, unsigned char * buffer, int final){
 	//we have already calculated the SHA1 in buffer
 	//so we listen for a response:
 	memset(&receive, 0, 35);
-	start = time(NULL);
-	elapsed = 0;
-	while((bytes == 0) || (elapsed < 3)){
-		now = time(NULL);
-		elapsed = now - start;
+		
+	while(bytes == 0){
+		
+
   	if((bytes = recv(TCPSock, receive, TCPBUFFSIZE-1, 0)) < 0){
   		Die("Oh bollocks!");
   	}

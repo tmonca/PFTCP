@@ -18,6 +18,7 @@ If ACK is wrong client will resend the chunk
 #include <unistd.h>
 #include <netinet/in.h>
 #include <fcntl.h>
+#include <time.h>
 
 #include <openssl/sha.h>
 
@@ -58,6 +59,7 @@ void HandleClient(int rcvsock, int Uport, in_addr_t address) {
   int received = -1;
   int sent = -1;
   int totalBytes = 0;
+  time_t start, now;
 
 /* Open a file to write the output. For now give it fixed name */
   int32_t fh = 0;
@@ -149,11 +151,13 @@ void HandleClient(int rcvsock, int Uport, in_addr_t address) {
  			memcpy(&tmp[byteCount], data, bytes);
  			byteCount += bytes;  //keeps a running copunt of number of bytes
   		totalBytes += bytes;
+  		start = time(NULL);
+	
 /* Increment the pointer. Check to see if we have had ackPer
 * segments and pause if we have. Then calculate the SHA1 and
 * send this by TCP. Client will respond yes or no 
 */		
- 			if( (pointer%ackPer == 0) || (bytes < bytes1st)){
+ 			if( (pointer%ackPer == 0) || (bytes < bytes1st) || (time(NULL) - start > 2)){
  				printf("Time to calculate intermediate checksum\n");
  				
  				while (1){

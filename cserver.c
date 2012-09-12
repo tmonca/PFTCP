@@ -45,7 +45,7 @@ int readCommand(char* , char* );
 *
 * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-void HandleClient(int rcvsock, int Uport) {
+void HandleClient(int rcvsock, int Uport, in_addr_t address) {
   char buffer[BUFFSIZE];  // not sure I need so many buffers
   char data[BUFFSIZE]; // a buffer for the immediate 
   unsigned char check[20];	// a buffer for the SHA1 checksum
@@ -99,7 +99,7 @@ void HandleClient(int rcvsock, int Uport) {
 /* Construct the UDP server sockaddr_in structure */
 	memset(&udp_server, 0, sizeof(udp_server));       /* Clear struct */
 	udp_server.sin_family = AF_INET;                  /* Internet/IP */
-	udp_server.sin_addr.s_addr = inet_addr("INADDR_ANY");   /* Any IP address */
+	udp_server.sin_addr.s_addr = address;   /* Any IP address */
 	udp_server.sin_port = htons(Uport);  	/*use port from command line*/
 
 /* Bind to the UDP socket*/
@@ -227,14 +227,15 @@ int main(int argc, char *argv[]) {
 
   int tcp_serversock, tcp_clientsock;
   struct sockaddr_in tcp_echoserver, tcp_echoclient;
+  in_addr_t address = inet_addr(argv[2]);
 
 /* Check for the correct useage */
   if (argc != 3) {
-    fprintf(stderr, "USAGE: echoserver <TCP port> <UDP port>\n");
+    fprintf(stderr, "USAGE: echoserver <TCP port> <local_ip> <local UDP port>\n");
     exit(1);
   }
   
-  int UDPport = atoi(argv[2]);
+  int UDPport = atoi(argv[3]);
   
 /* Create the TCP socket */
   if ((tcp_serversock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) < 0) {
@@ -266,7 +267,7 @@ int main(int argc, char *argv[]) {
     }
     
  /* Call the handler function (this does the heavy lifting) */
-    HandleClient(tcp_clientsock, UDPport);
+    HandleClient(tcp_clientsock, UDPport, address);
   }
 }
 

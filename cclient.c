@@ -57,8 +57,8 @@ int checking(int, unsigned char *, int);
 int main(int argc, char *argv[]) {
 	/*variables for TCP*/
 	
-	 if (argc != 4) {
-  	fprintf(stderr, "USAGE: TCPecho <server_ip> <port> <frequency of acks>\n");
+	 if (argc != 5) {
+  	fprintf(stderr, "USAGE: TCPecho <server_ip> <tcp_port> <local_ip> <local_port> <frequency of acks>\n");
   	exit(1);
     }
 	
@@ -74,7 +74,7 @@ int main(int argc, char *argv[]) {
 	int final = 0;
 	/*variables for the UDP sender*/
   int sock_udp;
-  int ackPer = atoi(argv[3]);
+  int ackPer = atoi(argv[5]);
   printf("ackPer set to %d\n", ackPer);
   struct sockaddr_in udp_echoserver;
   struct sockaddr_in udp_echoclient;
@@ -114,9 +114,8 @@ FEC data instead? */
 	/* Construct the UDP server sockaddr_in structure */
 	memset(&udp_echoserver, 0, sizeof(udp_echoserver));       /* Clear struct */
 	udp_echoserver.sin_family = AF_INET;                  /* Internet/IP */
-	udp_echoserver.sin_addr.s_addr = inet_addr("128.232.14.89");   /* Any IP address */
-	/*udp_echoserver.sin_port = htons(atoi(argv[3])+1);        server port */
-	udp_echoserver.sin_port = htons(13);
+	udp_echoserver.sin_addr.s_addr = inet_addr(argv[3]);   /* Any IP address */
+	udp_echoserver.sin_port = htons(atoi(argv[4]));
 		
 	serverlen = sizeof(udp_echoserver);
 	if (bind(sock_udp, (struct sockaddr *) &udp_echoserver, serverlen) < 0) {
@@ -139,7 +138,7 @@ FEC data instead? */
 	memset(&buffer, 0, TCPBUFFSIZE);
 	strcpy(buffer, OPEN);
 	strcpy(&buffer[4], " ");
-	strcpy(&buffer[5], argv[3]);
+	strcpy(&buffer[5], argv[5]);
 	printf("command is %s\n", buffer);
 	if (send(sock_tcp, buffer, sizeof(buffer), MSG_MORE) < 1) {
   		Die("Failed sending TCP open - wrong no. sent bytes");
@@ -266,7 +265,8 @@ int UDP(int UDPSock, struct sockaddr_in udp_echoserver, int TCPSock, char* buffe
 }	
 	
 int checking(int TCPSock, unsigned char * buffer, int final){
-	int j, flag;
+	int j, flag, elapsed;
+	time_t start, now;
 	int bytes = 0;
 	char receive[TCPBUFFSIZE];
 	char command[TCPBUFFSIZE];
@@ -274,7 +274,11 @@ int checking(int TCPSock, unsigned char * buffer, int final){
 	//we have already calculated the SHA1 in buffer
 	//so we listen for a response:
 	memset(&receive, 0, 35);
-	while(bytes == 0){
+	start = time(NULL);
+	elapsed = 0;
+	while((bytes == 0) || (elapsed < 3)){
+		now = time(NULL);
+		elapsed = now - start;
   	if((bytes = recv(TCPSock, receive, TCPBUFFSIZE-1, 0)) < 0){
   		Die("Oh bollocks!");
   	}
@@ -318,7 +322,7 @@ int checking(int TCPSock, unsigned char * buffer, int final){
 			return flag;
 		}
   }
-  return -1; //undefined error case
+  return 1; 
 	
 }
 

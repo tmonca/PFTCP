@@ -19,6 +19,7 @@ If ACK is wrong client will resend the chunk
 #include <netinet/in.h>
 #include <fcntl.h>
 #include <time.h>
+#include <poll.h>
 
 #include <openssl/sha.h>
 
@@ -60,6 +61,9 @@ void HandleClient(int rcvsock, int Uport, in_addr_t address) {
   int sent = -1;
   int totalBytes = 0;
   time_t start, now;
+  int polled;
+	struct pollfd *pollList;
+
 
 /* Open a file to write the output. For now give it fixed name */
   int32_t fh = 0;
@@ -99,9 +103,9 @@ void HandleClient(int rcvsock, int Uport, in_addr_t address) {
 		Die("Failed to create UDP socket");
 	}
 	
-	int flags = fcntl(udp_sock, F_GETFL);
+	/*int flags = fcntl(udp_sock, F_GETFL);
 	flags |= O_NONBLOCK;
-	fcntl(udp_sock, F_SETFL, flags);
+	fcntl(udp_sock, F_SETFL, flags);*/
 	
 /* Construct the UDP server sockaddr_in structure */
 	memset(&udp_server, 0, sizeof(udp_server));       /* Clear struct */
@@ -114,6 +118,10 @@ void HandleClient(int rcvsock, int Uport, in_addr_t address) {
   if (bind(udp_sock, (struct sockaddr *) &udp_server, serverlen) < 0) {
   	Die("Failed to bind UDP server socket");
   } 
+  
+  pollList[0].fd = udp_sock;
+  pollList[0].events |= POLLIN;
+  
   
 /*	if((connect(udp_sock, (struct sockaddr *) &udp_server, serverlen) ) < 0) {
 		Die("Failed to connect UDP server socket");
@@ -139,23 +147,25 @@ void HandleClient(int rcvsock, int Uport, in_addr_t address) {
 * Perhaps the solution is to have this as a permanent loop but
 * every ackPer segments we call another function to do the checking?
 */
-		int timeout = 0;
+		//int timeout = 0;
 		int bytes1st = 0;
  	 	while (1) {
 			
 /* Receive a message from the client */
-			
-  		bytes = recvfrom(udp_sock, data, BUFFSIZE, 0, (struct sockaddr*) &udp_server, &serverlen); 
+			if(poll(pollList, 1, 1000)) {
+				printf("got a poll \n");
+  			bytes = recvfrom(udp_sock, data, BUFFSIZE, 0, (struct sockaddr*) &udp_server, &serverlen); 
+  		}
   		if(bytes1st == 0){
   			bytes1st = bytes;
   		}
-  		if(byteCount == 0){
+  		/*if(byteCount == 0){
   			start = time(NULL);
   			printf("setting time to %d\n", start);
-  		}
+  		}*/
   		pointer++;
-  		timeout = time(NULL) - start;
-  		printf("%d: bytes = %d, timeout = %d\n", pointer, bytes, timeout);
+  		//timeout = time(NULL) - start;
+  		printf("%d: bytes = %d\n", pointer, bytes);
 
 			/* use memcpy to copy to the tmp storage */
  			memcpy(&tmp[byteCount], data, bytes);
@@ -167,7 +177,7 @@ void HandleClient(int rcvsock, int Uport, in_addr_t address) {
 * segments and pause if we have. Then calculate the SHA1 and
 * send this by TCP. Client will respond yes or no 
 */		
- 			if( (pointer%ackPer == 0) || (bytes < bytes1st) || timeout > 2){
+ 			if( (pointer%ackPer == 0) || (bytes < bytes1st)){
  				printf("Time to calculate intermediate checksum\n");
  				
  				while (1){

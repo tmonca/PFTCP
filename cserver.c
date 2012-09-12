@@ -62,7 +62,7 @@ void HandleClient(int rcvsock, int Uport, in_addr_t address) {
 /* Open a file to write the output. For now give it fixed name */
   int32_t fh = 0;
 	const char* filename = "out.txt";
-  if((fh = open(filename, O_WRONLY|O_TRUNC)) == -1){
+  if((fh = open(filename, O_WRONLY|O_TRUNC|O_CREAT)) == -1){
     Die("Couldn't open the file");
   }
 

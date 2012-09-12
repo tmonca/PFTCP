@@ -235,6 +235,7 @@ int UDP(int UDPSock, struct sockaddr_in udp_echoserver, int TCPSock, char* buffe
 	memset(&check, 0, 20);
 	size = sizeof(udp_echoserver);
 	while(test > 0){
+		rtn = 0;
 		for(j = 0; j < count -1; j++){
 			if ((sendto(UDPSock, &buffer[rtn], UDPBUFFSIZE, 0, (struct sockaddr *) &udp_echoserver, size)) != UDPBUFFSIZE) {
 	   		Die("Mismatch in number of sent bytes (EOF)");

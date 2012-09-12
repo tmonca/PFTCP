@@ -98,6 +98,11 @@ void HandleClient(int rcvsock, int Uport, in_addr_t address) {
 	if ((udp_sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0) {
 		Die("Failed to create UDP socket");
 	}
+	
+	int flags = fcntl(udp_sock, F_GETFL);
+	flags |= O_NONBLOCK;
+	fcntl(udp_sock, F_SETFL, flags);
+	
 /* Construct the UDP server sockaddr_in structure */
 	memset(&udp_server, 0, sizeof(udp_server));       /* Clear struct */
 	udp_server.sin_family = AF_INET;                  /* Internet/IP */

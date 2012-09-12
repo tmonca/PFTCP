@@ -230,7 +230,7 @@ int main(int argc, char *argv[]) {
   in_addr_t address = inet_addr(argv[2]);
 
 /* Check for the correct useage */
-  if (argc != 3) {
+  if (argc != 4) {
     fprintf(stderr, "USAGE: echoserver <TCP port> <local_ip> <local UDP port>\n");
     exit(1);
   }

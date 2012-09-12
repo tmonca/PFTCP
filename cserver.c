@@ -134,7 +134,7 @@ void HandleClient(int rcvsock, int Uport, in_addr_t address) {
 * Perhaps the solution is to have this as a permanent loop but
 * every ackPer segments we call another function to do the checking?
 */
-		
+		int timeout = 0;
 		int bytes1st = 0;
  	 	while (1) {
 			
@@ -149,7 +149,8 @@ void HandleClient(int rcvsock, int Uport, in_addr_t address) {
   			printf("setting time to %d\n", start);
   		}
   		pointer++;
-  		printf("%d: bytes = %d\n", pointer, bytes);
+  		timeout = time(NULL) - start;
+  		printf("%d: bytes = %d, timeout = %d\n", pointer, bytes, timeout);
 
 			/* use memcpy to copy to the tmp storage */
  			memcpy(&tmp[byteCount], data, bytes);
@@ -161,7 +162,7 @@ void HandleClient(int rcvsock, int Uport, in_addr_t address) {
 * segments and pause if we have. Then calculate the SHA1 and
 * send this by TCP. Client will respond yes or no 
 */		
- 			if( (pointer%ackPer == 0) || (bytes < bytes1st) || (time(NULL) - start > 2)){
+ 			if( (pointer%ackPer == 0) || (bytes < bytes1st) || timeout > 2){
  				printf("Time to calculate intermediate checksum\n");
  				
  				while (1){
